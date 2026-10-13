@@ -1,3 +1,4 @@
 [submodule "0FOAI"]
 	path = 0FOAI
-	url = https://github.com/chrisbsoo/2026_27
+	url = https://github.com/semtm0051/2026_27
+	branch = main
