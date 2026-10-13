@@ -1,0 +1,469 @@
+---
+title: "Assignment 03 - Solutions"
+subtitle: "Statistical Computing and Empirical Methods"
+author: "YOUR_NAME (YOUR_STUDENT_ID)"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+> **A word of advice**
+>
+> Think of the SCEM labs like going to the gym: if you pay for gym membership but instead of working out you use a machine to lift the weights for you, you won’t get any results.
+>
+> Generative AI tools can easily provide answers to most of the questions below. But, before you try that, please notice that answering the specific questions below is not the point of this assignment. Instead, the questions are designed to give you the chance to develop a better understanding of estimation concepts and acquire certain _**statistical thinking**_ skills. These are essential skills for any data scientist to be even able to use Gen AI effectively when trying to solve anything non-trivial.
+>
+> A very important part of this learning involves not having the answers ready-made for you, but instead taking the time to actually search for the answer, trying something, getting it wrong, and trying again.
+>
+> So, make the best use of this session. The assignments are not marked, so it is much better to try them yourself even if you get incorrect answers (you’ll be able to correct yourself later when you receive feedback) than to have a perfect solution that's not your own.
+
+-----
+
+## IMPORTANT NOTES: 
+- **DO NOT** change the code block names. Enter your solutions to each question into the predefined code blocks. 
+
+---
+
+## Setup
+
+The code block below sets up your session. The only think you should change in it is to replace `"ABCDEFG"` by your student ID number, which will be used as the seed for your random number generators.
+
+```{r ID, echo=FALSE, message=FALSE, warning=FALSE}
+## We will use your student ID as the seed for the random number generator.
+MY_STUDENT_ID <- 1234567 # <-- Replace 1234567 by your student ID number (as an integer, i.e., without quotes).
+```
+
+```{r Setup, echo=FALSE, message=FALSE, warning=FALSE}
+## DO NOT CHANGE ANYTHING IN THIS CODE BLOCK
+
+## Note: tidyverse includes:
+## ggplot2, dplyr, tidyr, readr, purrr, tibble, stringr, forcats, and lubridate.
+## Check https://www.tidyverse.org/packages/ for details
+
+allowed.packages <- c("tidyverse", "readxl")
+
+# This install packages if needed, and then loads them.
+for (i in seq_along(allowed.packages)){
+  if(!(allowed.packages[i] %in% installed.packages()[, 1])){
+    install.packages(allowed.packages[i])
+  }
+  library(allowed.packages[i], character.only = TRUE)
+}
+
+knitr::opts_chunk$set(echo = TRUE, collapse=TRUE)
+ignore <- runif(1) # To initialise the random number generator
+```
+```{r checkID, echo=FALSE}
+if(!is.numeric(MY_STUDENT_ID)){
+  stop("MY_STUDENT_ID MUST BE YOUR VALID (NUMERIC) student ID.")
+} 
+```
+
+## Recap of confidence intervals
+
+### Exercise 1: 
+
+:::{#prompt .message style="color: blue;"}
+**a.** Write a function called `mean_CI` that takes parameters `x` (a numeric vector) and `alpha` (a significance level) and outputs a closed confidence interval as a vector.
+
+:::
+
+```{r Q1a}
+#' Required variables: mean_CI (function)
+#' Required plots: 
+
+# Your function declaration should look somewhat like
+# mean_CI <- function(x, alpha) {
+# ... function contents here ...
+# }
+
+# Solution
+mean_CI <- function(x, alpha) {
+  N <- length(x)
+  mean(x) + qt(c(alpha/2, 1 - alpha/2), N - 1) * sd(x) / sqrt(N)
+}
+
+```
+
+:::{#prompt .message style="color: blue;"}
+**b.** Build your data frame following the instructions in the assignment specs and store it as a data frame called `sim_CI`. 
+:::
+
+```{r Q1b}
+#' Required variables: sim_CI (data.frame)
+#' Required plots: 
+suppressPackageStartupMessages({library(dplyr); library(ggplot2)})
+set.seed(1234567)
+
+nreps <- 50
+# Initialising the dataframe for you:
+sim_CI <- data.frame(replicate = 1:nreps,
+                     xbar = rep(NA, nreps), 
+                     CI_l = rep(NA, nreps), 
+                     CI_u = rep(NA, nreps))
+
+# Enter your solution here
+# (...)
+
+# Solution
+for (i in 1:nreps){
+  x <- rnorm(30, 10, 15)
+  CI <- mean_CI(x, 0.05)
+  sim_CI$xbar[i] <- mean(x)
+  sim_CI[i, 3:4] <- CI
+}
+```
+
+:::{#prompt .message style="color: blue;"}
+**c.** Add the required new column to your dataset. It may be useful to use `ifelse()` and the logical AND, `&`
+:::
+
+```{r Q1c}
+#' Required variables: sim_CI (data.frame)
+#' Required plots: 
+
+sim_CI$captures <- ifelse(sim_CI$CI_l <= 10 & sim_CI$CI_u >= 10,
+                          TRUE, FALSE)
+```
+
+:::{#prompt .message style="color: blue;"}
+**d.**  Generate the plot as specified in the assignment specs.
+:::
+
+```{r Q1d}
+#' Required variables: 
+#' Required plots: TRUE
+
+ggplot(sim_CI, aes(x = xbar, y = replicate, 
+                   xmax = CI_u, xmin = CI_l, 
+                   colour = captures)) + 
+  geom_pointrange() + 
+  geom_vline(xintercept = 10, linetype = "dashed") +
+  theme_minimal() + labs(title = "50 confidence intervals", x = "x")
+
+```
+
+*****
+
+### Exercise 2: 
+
+:::{#prompt .message style="color: blue;"}
+**a.** Modify your confidence interval function from Exercise 1 to also be able to calculate one-sided intervals, as indicated in the Assignment specs. 
+:::
+
+
+```{r Q2a}
+#' Required variables: mean_CI2 (function)
+#' Required plots: 
+
+# Your function declaration should look somewhat like
+# mean_CI2 <- function(x, alpha, type) {
+# ... function contents here ...
+# }
+
+# Solution
+mean_CI2 <- function(x, alpha, type) {
+  N <- length(x)
+  
+  if (type == "lower"){
+    mean(x) + qt(alpha, N - 1) * sd(x) / sqrt(N)
+  } else if (type == "upper"){
+    mean(x) + qt(1 - alpha, N - 1) * sd(x) / sqrt(N)
+  } else if (type == "two.sided"){
+    mean(x) + qt(c(alpha/2, 1 - alpha/2), N - 1) * sd(x) / sqrt(N)
+  } else {
+    stop("type not recognised. Please use 'lower', 'upper' or 'two.sided'")
+  }
+}
+
+```
+
+
+### Exercise 3: 
+
+:::{#prompt .message style="color: blue;"}
+**a.** Read the data in file `pharma_drug_spending.csv` into a data frame called `oecd.pharma`. 
+:::
+
+
+```{r Q3a}
+#' Required variables: oecd.pharma (data.frame)
+#' Required plots: 
+
+# Solution
+oecd.pharma <- read.csv("./pharma_drug_spending.csv", header = TRUE)
+
+```
+
+:::{#prompt .message style="color: blue;"}
+**b.** Create the summary data frame as specified in the assignment specs.
+:::
+
+
+```{r Q3b}
+#' Required variables: perc.per.year (data.frame)
+#' Required plots: 
+
+# Solution
+alpha <- 0.05
+perc.per.year <- oecd.pharma %>%
+  group_by(TIME) %>%
+  summarise(mean_PC_GDP = mean(PC_GDP),
+            N           = n(),
+            CI_L        = mean_CI2(PC_GDP, alpha = 2*alpha, type = "lower"),
+            CI_U        = mean_CI2(PC_GDP, alpha = 2*alpha, type = "upper")) %>%
+  filter(TIME >= 1970, TIME <= 2020)
+
+```
+
+:::{#prompt .message style="color: blue;"}
+**c.** Create the plot with the mean % GDP / year and their respective confidence intervals.
+:::
+
+```{r Q3c}
+#' Required variables: 
+#' Required plots: TRUE
+
+# Solution
+
+## Basic plot
+ggplot(perc.per.year, aes(x = TIME, y = mean_PC_GDP)) + 
+  geom_line() + 
+  geom_pointrange(aes(ymin = CI_L, ymax = CI_U))
+
+## A more sophisticated plot
+ggplot(perc.per.year, aes(x = TIME, y = mean_PC_GDP)) + 
+  geom_line() + 
+  geom_pointrange(aes(ymin = CI_L, ymax = CI_U)) +
+  geom_vline(xintercept = 2003, colour = "red", linetype = "dashed") +
+  annotate(geom = "text", x = 2002.5, y = 1.7, 
+           label = "2003", colour = "red", hjust = 1) + 
+  labs(title = "Mean % GDP spent on pharma drugs per year", 
+       caption = "Source: OECD, DataHub", 
+       x = "Year", y = "% GDP") + 
+  theme_minimal() + 
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank())
+```
+
+### Exercise 4
+
+:::{#prompt .message style="color: blue;"}
+**a.** Generate a random vector called `x` containing 30 observations drawn from a normal distribution with $\mu = 100$ and $\sigma^2 = 144$. (Notice that you have the _variance_, but function `rnorm()` expects the _standard deviation_). Use the data in this vector to validate your function `mean_CI2()`, checking that it returns the same confidence limits as `t.test()` for two-sided, lower and upper confidence limits.
+
+:::
+
+```{r Q4a}
+#' Required variables: x (numeric)
+#' Required plots: 
+
+# Solution
+x <- rnorm(30, mean = 100, sd = sqrt(144))
+
+# Testing 2-sided interval
+mean_CI2(x, alpha = 0.05, type = "two.sided")
+t.test(x, conf.level = 0.95, alternative = "two.sided")$conf.int
+
+# Testing upper confidence bound
+mean_CI2(x, alpha = 0.01, type = "upper")
+t.test(x, conf.level = 0.99, alternative = "less")$conf.int
+
+# Testing lower confidence bound
+mean_CI2(x, alpha = 0.02, type = "lower")
+t.test(x, conf.level = 0.98, alternative = "greater")$conf.int
+```
+
+### Exercise 5
+
+:::{#prompt .message style="color: blue;"}
+**a.** Load package `NHANES` and check the documentation of the dataset by typing `?NHANES` in the console.
+
+:::
+
+```{r Q5a}
+#' Required variables: NHANES (tbl_df)
+#' Required plots: 
+
+
+library(NHANES) # Loads the package
+```
+
+:::{#prompt .message style="color: blue;"}
+**b.** Generate the boxplots as indicated in the assignment specs.
+
+:::
+
+```{r Q5b}
+#' Required variables: 
+#' Required plots: TRUE
+
+# Solution
+ggplot(NHANES, aes(x = Race1, y = BPSysAve, fill = Race1)) + 
+  geom_boxplot(show.legend = FALSE) + 
+  labs(title = "SOME TITLE OF YOUR CHOICE",
+       caption = "Source: NHANES",
+       x = "Self-declared race",
+       y = "Mean systolic blood pressure") + 
+  theme_light()
+
+```
+
+:::{#prompt .message style="color: blue;"}
+**c.** Extract the subset `Y` according to the filtering rules in the assignment specs
+
+:::
+
+```{r Q5c}
+#' Required variables: Y (data.frame)
+#' Required plots: FALSE
+
+# Solution
+Y <- NHANES %>%
+  filter(Gender == "female",
+         Age >= 30,
+         Race1 %in% c("Black", "Hispanic"),
+         Education == "College Grad",
+         !is.na(BPSysAve))
+
+```
+
+:::{#prompt .message style="color: blue;"}
+**d.** Calculate the individual confidence intervals and plot them.
+
+:::
+
+```{r Q5d}
+#' Required variables: CIs_1 (data.frame)
+#' Required plots: TRUE
+
+# Solution
+CIs_1 <- Y %>%
+  rename(Population = Race1) %>%
+  group_by(Population) %>%
+  summarise(est  = mean(BPSysAve),
+            CI_L = t.test(BPSysAve, conf.level = 0.95)$conf.int[1],
+            CI_U = t.test(BPSysAve, conf.level = 0.95)$conf.int[2])
+
+ggplot(CIs_1, aes(x = est, y = Population)) + 
+  geom_pointrange(aes(xmin = CI_L, xmax = CI_U)) + 
+  theme_light() + 
+  labs(title = "Confidence intervals on mean systolic blood pressure",
+       subtitle = "College-educated women in the U.S., aged 30 and over",
+       caption = "Source: NHANES",
+       x = "Combined systolic blood pressure (mm Hg)") + 
+  theme(panel.grid.major.y = element_blank())
+```
+
+:::{#prompt .message style="color: blue;"}
+**e.** Calculate the confidence interval on the difference of the two means and add it to the 'CIs_1' dataframe.
+
+:::
+
+```{r Q5e}
+#' Required variables: CIs_1
+#' Required plots: 
+
+# Solution
+x.bl <- Y %>%
+  filter(Race1 == "Black") %>% 
+  pull(BPSysAve)
+
+x.hs <- Y %>%
+  filter(Race1 == "Hispanic") %>% 
+  pull(BPSysAve)
+
+CIs_1 <- rbind(CIs_1,
+               data.frame(
+                 Population = "Black - Hispanic",
+                 est = mean(x.bl) - mean(x.hs),
+                 CI_L = t.test(x = x.bl, y = x.hs, conf.level = 0.95, var.equal = FALSE)$conf.int[1],
+                 CI_U = t.test(x = x.bl, y = x.hs, conf.level = 0.95, var.equal = FALSE)$conf.int[2]))
+
+CIs_1
+
+```
+
+:::{#prompt .message style="color: blue;"}
+**f.** Add the confidence interval half-widths to the `CIs_1` dataframe.
+
+:::
+
+```{r Q5f}
+#' Required variables: CIs_1
+#' Required plots: 
+
+# Solution
+CIs_1 <- CIs_1 %>%
+  mutate(CIhw = (CI_U - CI_L) / 2)
+
+CIs_1
+```
+
+
+### Exercise 6:
+
+:::{#prompt .message style="color: blue;"}
+**a.** Build the function `median_ci_boot` as indicated in the CW specs
+:::
+
+```{r Q6a}
+#' Required variables: median_ci_boot (function)
+#' Required plots: 
+
+median_ci_boot <- function(x, R, conf){
+  alpha = 1 - conf
+  boot_medians <- replicate(R, median(sample(x, size = length(x), replace = TRUE)))
+  quantile(boot_medians, c(alpha / 2, 1 - alpha / 2))
+}
+
+```
+
+:::{#prompt .message style="color: blue;"}
+**b.** Calculate the confidence interval as indicated in the assignment specs.
+:::
+
+```{r Q6b}
+#' Required variables: med_usd_cap_ci (numeric)
+#' Required plots: 
+
+# Reload the data
+oecd.pharma <- read.csv("./pharma_drug_spending.csv", header = TRUE)
+
+med_usd_cap_ci <- oecd.pharma %>%
+  filter(TIME == 2020) %>%
+  pull(USD_CAP) %>%
+  median_ci_boot(R = 2000, conf = 0.95)
+
+```
+
+
+:::{#prompt .message style="color: blue;"}
+**c.** Calculate the mean and $95\%$ CI on the median %GDP spent per year on pharmaceutical drugs in OECD countries, and generate the plot as indicated in the assignment specs. 
+:::
+
+```{r Q6c}
+#' Required variables: 
+#' Required plots: TRUE
+library (tidyr)
+myCIs <- oecd.pharma %>%
+  filter(TIME >= 1980, TIME <= 2020) %>%
+  group_by(TIME) %>%
+  summarise(Med = median(PC_GDP),
+            CI  = list(median_ci_boot(PC_GDP, R = 1000, conf = 0.95))) %>%
+  unnest_wider(CI) %>%
+  rename(CI_L = `2.5%`,
+         CI_U = `97.5%`)
+
+ggplot(myCIs, aes(x = TIME, y = Med, ymin = CI_L, ymax = CI_U)) + 
+  geom_line() + 
+  geom_pointrange(aes(ymin = CI_L, ymax = CI_U)) +
+  labs(title = "Median % GDP spent on pharma drugs per year", 
+       subtitle = "OECD countries",
+       caption = "Source: OECD, DataHub", 
+       x = "Year", y = "% GDP") + 
+  theme_minimal() + 
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank())
+
+```

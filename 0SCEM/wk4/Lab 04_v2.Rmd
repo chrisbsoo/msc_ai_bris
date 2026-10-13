@@ -1,0 +1,948 @@
+---
+title: "Assignment 04"
+subtitle: "Statistical Computing and Empirical Methods"
+author: "Sarah Sachs"
+output: html_document
+---
+
+> **A word of advice**
+>
+> Think of the SCEM labs like going to the gym: if you pay for gym membership but instead of working out you use a machine to lift the weights for you, you won’t get any results.
+>
+> Generative AI tools can easily provide answers to most of the questions below. But, before you try that, please notice that answering the specific questions below is not the point of this assignment. Instead, the questions are designed to give you the chance to develop a better understanding of estimation concepts and acquire certain _**statistical thinking**_ skills. These are essential skills for any data scientist to be even able to use Gen AI effectively when trying to solve anything non-trivial.
+>
+> A very important part of this learning involves not having the answers ready-made for you, but instead taking the time to actually search for the answer, trying something, getting it wrong, and trying again.
+>
+> So, make the best use of this session. The assignments are not marked, so it is much better to try them yourself even if you get incorrect answers (you’ll be able to correct yourself later when you receive feedback) than to have a perfect solution that's not your own.
+
+-----
+
+## IMPORTANT NOTES: 
+- **DO NOT** change the code block names. Enter your solutions to each question into the predefined code blocks. 
+
+---
+
+<!-- Setup
+The code block below sets up your session. Please don't change it.
+-->
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.width = 6, fig.height = 4.2,
+                      fig.align = "center")
+```
+
+In the previous sessions you learned how to manipulate data in R and how to
+summarise a single variable: a mean, a variance, a proportion. Each of those
+describes **one** quantity at a time.
+
+Today we take the next step: describing how one variable changes **with
+another**, and using that relationship to make predictions. This is
+**linear regression**, the topic of this week's lecture. By the end of this lab you should be able to
+
+  - fit a simple linear regression model with `lm()`;
+
+  - interpret the intercept and the slope in the units of the problem;
+
+  - compute and interpret residuals, and understand what "least squares" means;
+
+  - measure predictive error and compare a model against a sensible baseline;
+
+  - separate training from test data, and see what overfitting looks like;
+
+  - fit and interpret a model with several predictors, including a categorical one;
+
+  - recognise the standing limits: extrapolation, confounding and sampling
+    variability.
+
+As always, you are encouraged to experiment with the code. Change values,
+change arguments, and check what happens.
+
+### Before you begin
+
+Open **RStudio** and open the Rmarkdown document provided for this week.
+Unless otherwise stated, execute every code chunk and make sure you understand its output before moving on.
+
+> **Tip**
+>
+> If something unexpected happens, don't panic! Read the error message
+> carefully. It often tells you exactly what went wrong.
+
+We will use the same packages as last week, plus the built-in modelling
+functions of base R.
+
+```{r message=FALSE, warning=FALSE}
+# Uncomment if needed to install the relevant R packages
+# install.packages("palmerpenguins")
+# install.packages("dplyr")
+# install.packages("purrr")
+
+library(palmerpenguins)
+library(dplyr)
+library(purrr)
+```
+
+---
+
+# Part I: a first regression
+
+## The delivery data
+
+We start with the small example used in this week's lecture. A courier company
+recorded, for 37 past deliveries, how far the parcel had to travel and how long
+the delivery took.
+
+```{r}
+deliveries <- data.frame(
+  distance_km = c(1, 2, 2.8, 3, 3.2, 4, 5, 5, 5, 5, 6, 7, 7.7, 8, 8.3, 9,
+                  10, 10, 10, 10, 11, 11.8, 12, 12.3, 13, 14, 15, 15, 15,
+                  15, 16, 17, 17.8, 18, 18.3, 19, 20),
+  time_min    = c(15, 13, 19, 18, 14, 16, 17, 19, 20, 22, 23, 20, 27, 27,
+                  21, 22, 24, 26, 29, 32, 27, 33, 26, 27, 34, 34, 32, 34,
+                  36, 37, 35, 40, 41, 37, 37, 42, 41))
+
+str(deliveries)
+```
+
+Each row is one **observation**. The variable we want to predict
+(`time_min`) is called the **outcome**, or response; the variable we predict it
+from (`distance_km`) is the **predictor**.
+
+Always look at the data before modelling anything.
+
+```{r}
+# Notice that this is a "base R plot", i.e., not produced with ggplot2. 
+# (OPTIONAL TASK: try reproducing this plot using ggplot2).
+
+plot(time_min ~ distance_km, data = deliveries,
+     pch = 16, col = "firebrick", las = 1,
+     xlab = "Distance (km)", ylab = "Time (min)",
+     main = "37 past deliveries")
+```
+
+Notice the two things the lecture emphasised: there is a clear upward pattern,
+**and** the points do not lie on a single line. Two deliveries over the same
+distance did not take the same time.
+
+### Exercise 1
+
+Before fitting anything, answer these from the plot alone.
+
+  - Roughly how long would you expect a new **10 km** delivery to take?
+
+  - Four of the deliveries in the dataset were exactly 10 km. Extract them and
+    look at their times. Was your prediction a single number? Were theirs?
+
+> **Hint:** you can use simple indexing with a logical variable (e.g., `deliveries$distance_km == 10`) or dplyr's `filter()`.
+
+```{r}
+# Write your code in this code block
+
+```
+
+<!-- 
+Write your answer (in text form) below. You can use Markdown normaly within the 
+answer box.
+-->
+
+:::{#answer .message style="color: blue;"}
+**Answer**: 
+
+:::
+
+## Fitting a line with `lm()`
+
+The function that fits linear models in R is `lm()`. Its first argument is a
+**formula**, written `outcome ~ predictor`, and it reads as *"outcome as a function
+of predictor"*.
+
+```{r}
+# regression of "time_min as a function of distance_km"
+fit <- lm(time_min ~ distance_km, data = deliveries)
+
+fit
+```
+
+The two numbers printed under `Coefficients` are the estimates $b_0$
+(intercept) and $b_1$ (slope) of the fitted line
+
+$$\widehat{\text{Time}} = b_0 + b_1 \times \text{Distance}.$$
+
+You can extract them directly:
+
+```{r}
+coef(fit)
+```
+
+```{r}
+coef(fit)[1]  # intercept, b0
+coef(fit)[2]  # slope, b1
+```
+
+Rounded, this is $\widehat{\text{Time}} = 12 + 1.5 \times \text{Distance}$ --
+the equation used throughout the lecture.
+
+Adding the fitted line to the scatterplot is one line of code:
+
+```{r}
+# (OPTIONAL TASK: Try reproducing this plot using ggplot2).
+
+plot(time_min ~ distance_km, data = deliveries,
+     pch = 16, col = "firebrick", las = 1,
+     xlab = "Distance (km)", ylab = "Time (min)")
+
+abline(fit, col = "steelblue", lwd = 2)
+```
+
+### Exercise 2
+
+Interpret the two coefficients **in the units of the problem**, in one sentence
+each.
+
+  - What does the slope $b_1 \approx 1.5$ mean for a courier?
+
+  - What does the intercept $b_0 \approx 12$ mean? Is that a situation the
+    company ever observes? (Look at the smallest distance in the data.)
+
+<!-- Enter your answer below -->
+:::{#answer .message style="color: blue;"}
+**Answer**: 
+
+:::
+
+### Exercise 3
+
+Use the fitted coefficients to predict the delivery time for a new delivery of
+10 km, in two ways:
+
+  - by arithmetic, using `coef(fit)`;
+
+  - using the `predict()` function with a new data frame.
+  
+  - Store the prediction as a numeric variable `pred_10km`
+
+> **Hint:** To use `predict()`, you'll need a new data frame with the value(s) 
+of the relevant predictors. The name of the column in this `newdata` data.frame 
+must match the name of the predictor exactly. Check `?predict` for the function 
+documentation.
+
+
+```{r pred10}
+# Write your code in this code block
+
+```
+
+Do the two answers agree? Should they?
+
+<!-- Enter your answer below -->
+:::{#answer .message style="color: blue;"}
+**Answer**: 
+
+:::
+
+---
+
+# Part II: residuals and least squares
+
+## Residuals
+
+The model gives a prediction for every delivery we already have. Those
+predictions are the **fitted values**, and the gaps between what happened and
+what the model said are the **residuals**:
+
+$$e_i = Y_i - \hat{Y}_i.$$
+
+R gives you both.
+
+```{r}
+head(fitted(fit))     # the predicted times
+head(residuals(fit))  # observed minus predicted
+```
+
+It is worth seeing the residuals as the vertical gaps they are.
+
+```{r}
+# This is a slightly trickier plot to reproduce in ggplot2.
+# You can try it if you're feeling confident, but don't let yourself get stuck 
+# here -- complete the lab, then come back to practice your ggplot2 skills if 
+# you'd like.
+
+plot(time_min ~ distance_km, data = deliveries,
+     pch = 16, col = "firebrick", las = 1,
+     xlab = "Distance (km)", ylab = "Time (min)")
+
+abline(fit, col = "steelblue", lwd = 2)
+
+# one vertical segment per observation, from the point to the line
+segments(x0 = deliveries$distance_km, y0 = deliveries$time_min,
+         x1 = deliveries$distance_km, y1 = fitted(fit),
+         col = "firebrick")
+```
+
+A **positive** residual means the delivery took longer than the model
+predicted; a negative one means it was quicker.
+
+### Exercise 4
+
+The tenth row of `deliveries` is a 5 km delivery that took 22 minutes.
+
+  - Compute its predicted time by hand, using the coefficients.
+
+  - Compute its residual by hand.
+
+  - Check both against `fitted(fit)[10]` and `residuals(fit)[10]`.
+
+```{r}
+# Write your code in this code block
+
+```
+
+### Exercise 5
+
+Now look at the residuals as a set.
+
+  - What is their sum? (Store it as variable `sum_residuals`). Is that a coincidence?
+
+```{r residuals}
+# Write your code in this code block
+
+```
+
+  - Which delivery has the largest positive residual, and which the largest
+    negative one? 
+
+> **Hint:** `which.max()` and `which.min()` return the *position* of the largest
+and smallest element.
+
+<!-- Enter your answer below -->
+:::{#answer .message style="color: blue;"}
+**Answer**: 
+
+:::
+
+## What makes a line "best"?
+
+The lecture compared three candidate lines through the same cloud of points.
+Let us write a small function that scores any line by its **sum of squared
+residuals**, and use it to compare them.
+
+```{r}
+ssr <- function(b0, b1, data = deliveries){
+  predicted <- b0 + b1 * data$distance_km
+  residuals <- data$time_min - predicted
+  return(sum(residuals ^ 2))
+}
+```
+
+```{r}
+ssr(12, 1.5)    # the regression line
+ssr(19, 1.5)    # right slope, but 7 minutes too high
+ssr(27.5, 0)    # a horizontal line at the mean delivery time
+```
+
+The three lines, drawn together:
+
+```{r}
+# Note that even base R plots can be quite rich in terms of information.
+# Not everything needs to be a ggplot2 :)
+
+plot(time_min ~ distance_km, data = deliveries,
+     pch = 16, col = "firebrick", las = 1,
+     xlab = "Distance (km)", ylab = "Time (min)")
+
+abline(a = 12,   b = 1.5, col = "steelblue", lwd = 2)
+abline(a = 19,   b = 1.5, col = "grey40",    lwd = 2, lty = 2)
+abline(a = 27.5, b = 0,   col = "grey40",    lwd = 2, lty = 3)
+
+legend("topleft", bty = "n", cex = 0.8,
+       legend = c("regression line", "too high", "horizontal at the mean"),
+       col = c("steelblue", "grey40", "grey40"),
+       lty = c(1, 2, 3), lwd = 2)
+```
+
+### Exercise 6
+
+Try to beat `lm()`.
+
+  - Evaluate `ssr()` for a few "regression lines" of your own choosing, keeping the slope at
+    1.5 and moving the intercept a little either side of 12.
+
+  - Repeat the test above, but keeping the intercept at 12 and varying the slope.
+
+```{r}
+# Write your code in this code block
+
+```
+
+Can you find any pair $(b_0, b_1)$ with a smaller sum of squared residuals than
+the fitted line? Can you explain why?
+
+<!-- Enter your answer below -->
+:::{#answer .message style="color: blue;"}
+**Answer**: 
+
+:::
+
+
+### Exercise 7 (challenge)
+
+Do the search properly rather than by hand. Using a `for` loop or `map_dbl()`,
+evaluate `ssr(12, b1)` over a fine grid of slopes, say
+
+```{r}
+slopes <- seq(from = 1.0, to = 2.0, by = 0.01)
+```
+
+  - store the resulting sums of squared residuals in a data frame called 
+  `ssr_df`, with two columns: 'slopes' (containing the slope values) and 'ssr'.
+
+  - generate a plot of `slopes` x `ssr` (using either ggplot2 or an R base plot);
+
+  - use `which.min()` to find the best slope on the grid.
+
+How close is it to `coef(fit)[2]`?
+
+**Hint:** the shape of that curve is worth a moment's attention. Why does it
+have a single minimum?
+
+```{r ssr_vals}
+# Write your code in this code block
+
+```
+
+---
+
+# Part III: how good is the model?
+
+## A larger dataset
+
+The delivery data are small and tidy, which makes them good for a first look.
+From here on we return to the `penguins` dataset you met last week, and ask
+whether a penguin's **body mass** can be predicted from its **flipper length**.
+
+As before, we remove the observations with missing values.
+
+```{r}
+# library(palmerpenguins) # <-- load this if not already loaded
+penguins_clean <- penguins %>%
+  filter(!is.na(body_mass_g), !is.na(flipper_length_mm), !is.na(sex))
+
+nrow(penguins_clean)
+```
+
+```{r}
+# Another base R scatterplot. 
+plot(body_mass_g ~ flipper_length_mm, data = penguins_clean,
+     pch = 16, col = "firebrick", las = 1,
+     xlab = "Flipper length (mm)", ylab = "Body mass (g)")
+```
+
+```{r}
+# Simple linear regression
+pfit <- lm(body_mass_g ~ flipper_length_mm, data = penguins_clean)
+
+coef(pfit)
+```
+
+### Exercise 8
+
+Interpret the slope of `pfit` in the units of the problem: *"one extra
+millimetre of flipper length is associated with..."*.
+
+<!-- Enter your answer below -->
+:::{#answer .message style="color: blue;"}
+**Answer**: 
+
+:::
+
+Then re-plot the scatterplot, adding the fitted line. You can either copy the 
+base R one plot above and add the line to it, or generate a ggplot2 equivalent.
+
+```{r penguins_scatter}
+# Write your code in this code block
+
+```
+
+## Measuring prediction error
+
+As in the lecture, we summarise how far the predictions fall from the
+observations by the **average error**, the average length of the residuals:
+
+$$
+\text{Average error}=\frac{1}{n}\sum_{i=1}^{n}\lvert Y_i-\hat{Y}_i\rvert .
+$$
+
+It is in the units of the outcome (here grams), which makes it easy to talk
+about. In software and in many books it is called the *mean absolute error*
+(MAE). The absolute value is essential: without it the positive and negative
+residuals would cancel, and for a least-squares line with an intercept they
+cancel exactly.
+
+We will need the average error several times, so we write a small function
+for it.
+
+```{r}
+avg_error <- function(y, y_hat) mean(abs(y - y_hat))
+
+e <- residuals(pfit)
+
+model_error <- avg_error(penguins_clean$body_mass_g, fitted(pfit))
+
+model_error
+```
+
+An error of a few hundred grams means nothing on its own. **Compared with what?** 
+he simplest possible baseline model would be one that ignores flipper length 
+entirely and predicts the mean body mass for every penguin.
+
+```{r}
+baseline_pred <- mean(penguins_clean$body_mass_g)
+baseline_e    <- penguins_clean$body_mass_g - baseline_pred
+
+baseline_error <- avg_error(penguins_clean$body_mass_g, baseline_pred)
+
+c(baseline = baseline_error, model = model_error)
+```
+
+### Exercise 9
+
+  - By what factor does the regression model reduce the mean absolute error,
+    compared with predicting the mean for everyone?
+
+  - Compute the RMSE of the baseline as well. Is the difference the same on
+    both scales?
+
+```{r}
+# Write your code in this code block
+
+```
+
+<!-- Enter your answer below -->
+:::{#answer .message style="color: blue;"}
+**Answer**: 
+
+:::
+
+
+## $R^2$
+
+$R^2$ makes that same comparison with squared errors, on a 0–1 scale:
+
+$$
+R^2 = 1 - \frac{\sum (Y_i-\hat{Y}_i)^2}{\sum (Y_i-\bar{Y})^2}.
+$$
+
+It is generally easy to compute it, even if we do it "the long way" -- especially 
+if you notice that the denominator is the sum of squared errors on the fitted 
+regression, and the denominator is the sum of squared regressions on the 
+"predict everything as the mean" baseline.
+
+```{r}
+r2_manual <- 1 - sum(e ^ 2) / sum(baseline_e ^ 2)
+
+r2_manual
+```
+
+```{r}
+summary(pfit)$r.squared
+```
+
+The `summary()` of a fitted model contains a great deal more:
+
+```{r}
+summary(pfit)
+```
+
+You are not expected to interpret all of this yet: 
+  - you have already met standard errors (recall that they are the standard 
+  deviation of the sampling  distribution of an estimator -- yes, the regression 
+  coefficients are *sample estimates*! We'll look more into that later).
+  - $p$-values will come later in the module, when we discuss hypothesis testing.
+
+For now, locate the two coefficients, the `Residual standard error` and the 
+`Multiple R-squared`.
+
+### Exercise 10
+
+  - $R^2$ says that the line removes about 76% of the baseline's *squared*
+    error. Compare this with the percentage reduction in average error you
+    found in Exercise 9. Why do the two percentages differ?
+
+> **Hint:** suppose every residual shrank by the same factor $c$. What would
+    happen to the average error? And to $\sum_i e_i^2$?
+    
+<!-- Enter your answer below -->
+:::{#answer .message style="color: blue;"}
+**Answer**: 
+
+:::
+
+  - A colleague reports an $R^2$ of 0.76 and concludes that "flipper length
+determines 76% of a penguin's body mass". Give **two** reasons why that sentence 
+is wrong. Write it as a bullet list.
+
+<!-- Enter your answer below -->
+:::{#answer .message style="color: blue;"}
+**Answer**: 
+
+:::
+
+### Going further (optional): the RMSE
+
+The lecture uses only the average error, but software usually also reports the
+**root mean squared error**,
+
+$$
+\mathrm{RMSE}=\sqrt{\frac{1}{n}\sum_{i=1}^{n}(Y_i-\hat{Y}_i)^2}
+=\sqrt{\mathrm{S}_{\mathrm{res}}/n}.
+$$
+
+It is also in grams, but because it squares before averaging it penalises the
+large misses more heavily. It is never smaller than the average error, and the
+gap between the two widens as the errors become more uneven. The baseline's
+RMSE is $\sqrt{\mathrm{S}_{\mathrm{total}}/n}$, so the ratio of the two RMSEs
+is exactly $\sqrt{1-R^2}$. The `Residual standard error` in `summary(pfit)` is
+nearly the same quantity, $\sqrt{\mathrm{S}_{\mathrm{res}}/(n-2)}$: it divides
+by $n-2$ instead of $n$.
+
+```{r}
+c(average_error = model_error,
+  RMSE          = sqrt(mean(e ^ 2)),
+  residual_SE   = sigma(pfit))
+```
+
+---
+
+# Part IV: training and test data
+
+An error computed on the same observations used to fit the model is optimistic:
+the model was chosen to suit exactly those points. The honest question is how
+it performs on penguins it has never seen.
+
+Let's split the data into a **training set** and a **test set**.
+
+```{r}
+set.seed(2024)   # so that everyone in the lab gets the same split
+
+n     <- nrow(penguins_clean)
+train_id <- sample(seq_len(n), size = round(0.7 * n))
+
+train <- penguins_clean[train_id, ]
+test  <- penguins_clean[-train_id, ]
+
+c(n_train = nrow(train), n_test = nrow(test))
+```
+
+We fit on the training set **only**, then predict the test set.
+
+```{r}
+fit_train <- lm(body_mass_g ~ flipper_length_mm, data = train)
+
+pred_test <- predict(fit_train, newdata = test)
+
+train_error <- avg_error(train$body_mass_g, fitted(fit_train))
+test_error  <- avg_error(test$body_mass_g,  pred_test)
+
+c(train = train_error, test = test_error)
+```
+
+These are the two numbers of the lecture's *Training and test data* slide: the
+average error on the penguins used to fit the line, and on the held-out ones.
+For a model this simple they are usually close: a straight line has very little
+capacity to chase noise.
+
+> **NOTE**: This is possibly the most basic concept in statistical modelling and 
+machine learning: you don't test your model on the same data that was used to 
+develop it. It sounds simple (and it often is), but it can be sometimes 
+subtle -- especially when 
+aggregating data from different sources (which may or may not be independen) or 
+working with data that has some sort of grouping structure. We'll discuss this 
+further in future weeks.
+
+### Exercise 11
+
+Repeat the split with a different seed (say `set.seed(1)`) and recompute both
+errors.
+
+  - Do the two numbers change?
+
+  - Is the test error always larger than the training error?
+
+```{r}
+# Write your code in this code block
+
+```
+
+<!-- Enter your answer below -->
+:::{#answer .message style="color: blue;"}
+**Answer**: 
+
+:::
+
+### Exercise 12 (challenge)
+
+Now make the model flexible enough to get into trouble. Take a **small**
+training set of 25 penguins and fit polynomials of increasing degree:
+
+```{r}
+set.seed(7)
+small_id    <- sample(seq_len(n), size = 25)
+small_train <- penguins_clean[small_id, ]
+small_test  <- penguins_clean[-small_id, ]
+```
+
+For each degree in `1:12`:
+
+  - fit `lm(body_mass_g ~ poly(flipper_length_mm, degree), data = small_train)`;
+
+  - record the training average error and the test average error. 
+  
+Store the results in a data frame called `poly_df`, with columns 'Degree', 'Train.error' and 'Test.error'.
+
+> **Hint:** `map_dbl(1:12, \(d) ...)` is a compact way to do this, but a `for`
+loop is perfectly fine.
+
+```{r poly_df}
+# Write your code in this code block
+degrees <- 1:12
+
+```
+
+
+Plot the train and test errors values against the degree, on the same axes.
+
+```{r poly_df_plot}
+# Write your code in this code block
+
+```
+
+You should see something similar to the overfitting picture from the lecture: the
+training error falls as the degree grows, while the test error turns around and
+climbs. Which degree generalises best?
+  
+<!-- Enter your answer below -->
+:::{#answer .message style="color: blue;"}
+**Answer**: 
+
+:::
+
+Finally, a question to think about: least squares makes the *squared*
+residuals as small as possible, not their lengths. Is the training average
+error *guaranteed* to fall each time the degree goes up? Is the training
+$\mathrm{S}_{\mathrm{res}}$?
+
+
+---
+
+# Part V: more than one predictor
+
+Flipper length is not the only thing that varies between these penguins. The
+three species differ in size, and within a species males tend to be heavier
+than females. Multiple regression lets us use several predictors at once,
+
+$$
+\hat{Y}=b_0+b_1X_1+b_2X_2+\cdots+b_pX_p,
+$$
+
+and R's formula interface adds predictors with `+`.
+
+```{r}
+mfit <- lm(body_mass_g ~ flipper_length_mm + species, data = penguins_clean)
+
+coef(mfit)
+```
+
+Notice what happened to `species`. It is a **factor** with three levels, and R
+has represented it by comparing each level with a **reference category** — the
+first level, `Adelie`. The coefficient `speciesGentoo` is therefore read as
+*"the difference in predicted body mass between a Gentoo and an Adelie penguin
+of the same flipper length"*.
+
+```{r}
+levels(penguins_clean$species)
+```
+
+### Exercise 13
+
+  - Compare the coefficient of `flipper_length_mm` in `pfit` and in `mfit`.
+    It changes substantially. Why should adding species change what one
+    millimetre of flipper is worth?
+    
+```{r}
+# Write your code in this code block
+
+
+```
+
+<!-- Enter your answer below -->
+:::{#answer .message style="color: blue;"}
+**Answer**: 
+
+:::
+
+
+  - Compare the two $R^2$ values.
+
+```{r}
+# Write your code in this code block
+
+```
+
+### Exercise 14
+
+Add `sex` to the model as well.
+
+  - Fit `body_mass_g ~ flipper_length_mm + species + sex`.
+  
+```{r}
+# Write your code in this code block
+
+```
+
+  - Interpret the coefficient of `sexmale` in one sentence.
+  
+<!-- Enter your answer below -->
+:::{#answer .message style="color: blue;"}
+**Answer**: 
+
+:::
+
+  - Use `predict()` to estimate the body mass of a **female Chinstrap** penguin
+    with a flipper length of 195 mm. Store this prediction as variable `pred_peng`.
+
+> **Hint:** the `newdata` data frame needs one column per predictor, with the
+factor levels spelled exactly as in the data.
+
+```{r pred_peng}
+# Write your code in this code block
+
+```
+
+---
+
+# Part VI: limits and uncertainty
+
+## Extrapolation
+
+A fitted model will happily return a number for any input you give it, whether
+or not the data support it.
+
+```{r}
+range(penguins_clean$flipper_length_mm)
+```
+
+```{r}
+predict(pfit, newdata = data.frame(flipper_length_mm = c(200, 260, 400)))
+```
+
+### Exercise 15
+
+The last of those three predictions is for a flipper of 400 mm.
+
+  - Is the arithmetic wrong?
+
+  - Is the prediction credible? Explain the difference between the two
+    questions in a sentence.
+
+<!-- Enter your answer below -->
+:::{#answer .message style="color: blue;"}
+**Answer**: 
+
+:::
+
+
+## The fitted line is an estimate too
+
+Our coefficients came from one sample of penguins. A different sample would
+give different coefficients. We can see that directly, using exactly the
+resampling idea from last week's lab.
+    
+```{r}
+set.seed(2024)
+slopes <- map_dbl(1:500, \(i){
+  s <- penguins_clean %>% slice_sample(n = 50)
+  coef(lm(body_mass_g ~ flipper_length_mm, data = s))[2]
+})
+hist(slopes, breaks = 25, col = "lightblue", las = 1,
+     main = "Sampling distribution of the slope (n = 50)",
+     xlab = "Estimated slope (g per mm)")
+
+sd(slopes)
+```
+
+That histogram is the **sampling distribution** of the slope, and its spread is
+the **standard error** of the slope — the same quantity R printed in the
+`summary()` output above, in the column headed `Std. Error`.
+
+### Exercise 16
+
+  - Repeat the simulation with samples of size 100 and of size 200. What
+    happens to the spread of the estimated slopes?
+      
+```{r}
+# Write your code in this code block
+
+```
+
+<!-- Enter your answer below -->
+:::{#answer .message style="color: blue;"}
+**Answer**: 
+
+:::
+
+  - Compare `sd(slopes)` with the standard error that `summary()` reports for 
+  the full-data model. Should they agree exactly?
+          
+```{r}
+# Write your code in this code block
+
+```
+
+<!-- Enter your answer below -->
+:::{#answer .message style="color: blue;"}
+**Answer**: 
+
+:::
+
+### Exercise 17 (challenge)
+
+A confounding variable can reverse what a regression appears to say.
+
+  - Fit `body_mass_g ~ bill_depth_mm` on `penguins_clean`. Note the sign of the slope.
+            
+```{r}
+# Write your code in this code block
+
+```
+
+  - Now fit the same model **separately within each species**, using 
+  `filter()` for each of the three, and note the three slopes.
+            
+```{r}
+# Write your code in this code block
+
+```
+            
+  - Plot body mass against bill depth with the points coloured by species
+
+```{r plotpengs}
+# Write your code in this code block
+
+```
+            
+What is going on? Which of the two answers -- the overall slope, or the 
+within-species slopes -- would you quote to a biologist, and why?
+              
+<!-- Enter your answer below -->
+:::{#answer .message style="color: blue;"}
+**Answer**: 
+
+:::
+                  
+---
+                  
+## Where this goes next
+                  
+Everything in this lab predicted a **number**: minutes, or grams. Next week we
+keep the same machinery — a predictor, coefficients to interpret, a criterion
+to fit, a baseline to beat, a held-out check — but change the outcome to a
+**label**: was the delivery late, yes or no? That is logistic regression.

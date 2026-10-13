@@ -1,0 +1,87 @@
+Complete these modules on the AWS Academy:
+
+- WEEK 1
+
+Introduction
+View videos and review the Student Guide
+Ignore 'Course Support' and 'General Discussion' links
+Module 1 - Cloud Concepts Overview
+View videos and review the Student Guide
+Score at least 80% on the Knowledge Check
+CCP Study Guide: Chapter 1
+
+- WEEK 2
+
+Complete these modules on the AWS Academy:
+
+Module 9 - Cloud Architecture
+View videos and review the Student Guide
+Score at least 80% on the Knowledge Check
+Note: This has been swapped with Module 2
+CCP Study Guide: Chapter 12
+[Note: references other AWS services - review again at end of course]
+
+Module 3 - AWS Global Infrastructure Overview
+View videos and review the Student Guide
+Score at least 80% on the Knowledge Check
+CCP Study Guide: Chapter 4
+
+- WEEK 3
+
+Complete these modules on the AWS Academy:
+
+Module 4 - Cloud Security
+View videos and review the Student Guide
+Complete Lab 1
+Score at least 80% on the Knowledge Check
+CCP Study Guide: Chapter 5
+Module 5 - Networking and Content Delivery
+View videos and review the Student Guide
+Complete Lab 2
+Score at least 80% on the Knowledge Check
+CCP Study Guide: Chapter 10 
+
+- WEEK 4
+
+Complete these modules on the AWS Academy:
+
+Module 6 - Computing
+View videos and review the Student Guide
+Complete Lab 3 and the Activities AWS Lambda, AWS Elastic Beanstalk
+Score at least 80% on the Knowledge Check
+CCP Study Guide: Chapter 7
+
+- WEEK 5
+
+Complete these modules on the AWS Academy:
+
+Module 7 - Storage
+View videos and review the Student Guide
+Complete Lab 4
+Score at least 80% on the Knowledge Check
+CCP Study Guide: Chapter 8 
+[Note: EBS in Chapter 7, EFS overview in Appendix B]
+
+Module 8 - Databases
+View videos and review the Student Guide
+Complete Lab 5
+Score at least 80% on the Knowledge Check
+CCP Study Guide: Chapter 9
+
+- WEEK 7 (wk 6 is reading week)
+
+Complete these modules on the AWS Academy:
+
+Module 2 - Cloud Economics and Billing
+View videos and review the Student Guide
+Score at least 80% on the Knowledge Check
+Note: This has been swapped with Module 9
+CCP Study Guide: Chapter 2
+
+Module 10 - Auto Scaling and Monitoring
+View videos and review the Student Guide
+Complete Lab 6
+Score at least 80% on the Knowledge Check
+CCP Study Guide: Chapter 11 [Note: EC2 Auto Scaling only]
+
+Ensure all modules are marked as complete then claim your badge!

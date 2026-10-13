@@ -1,0 +1,856 @@
+---
+title: "Assignment 05"
+subtitle: "Statistical Computing and Empirical Methods"
+author: "Sarah Sachs"
+output: html_document
+---
+
+## IMPORTANT NOTES: 
+- **DO NOT** change the code block names. Enter your solutions to each question into the predefined code blocks. 
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.width = 6, fig.height = 4.2,
+                      fig.align = "center")
+```
+
+Last week you predicted a **number**: minutes of delivery time, grams of penguin.
+The whole apparatus — a predictor, coefficients to interpret, a criterion to fit,
+a baseline to beat, a held-out check — carries over to this week almost
+unchanged. What changes is the outcome. This week it is a **label**: was the
+delivery late, yes or no?
+
+That is **logistic regression**, the topic of this week's lecture. By the end of
+this lab you should be able to
+
+  - explain why a straight line is the wrong tool for a probability;
+
+  - fit a logistic regression model with `glm()`;
+
+  - move between probabilities, odds and log-odds, and read $e^{b_1}$ as an
+    odds ratio;
+
+  - understand what maximum likelihood chooses, and why;
+
+  - turn a predicted probability into a decision, and judge it with a confusion
+    matrix;
+
+  - extend the model to several predictors and to outcomes with more than two
+    categories;
+
+  - recognise the specific ways logistic models fail: separation, extrapolation
+    and sampling variability.
+
+As always, you are encouraged to experiment with the code. Change values,
+change arguments, and check what happens.
+
+### Before you begin
+
+Open **RStudio** and open the Rmarkdown document provided for this week.
+Unless otherwise stated, execute every code chunk and make sure you understand
+its output before moving on.
+
+> **Tip**
+>
+> If something unexpected happens, don't panic! Read the error message
+> carefully. It often tells you exactly what went wrong.
+
+```{r loadpackages, message=FALSE, warning=FALSE}
+# Uncomment if needed to install the relevant R packages
+# install.packages("palmerpenguins")
+# install.packages("dplyr")
+
+library(palmerpenguins)
+library(dplyr)
+library(purrr)
+library(nnet)      # for multinomial regression, in Part VII
+```
+
+---
+
+# Part I: yes/no outcomes
+
+## The same deliveries, a different question
+
+We start from exactly the dataset you used last week: 37 deliveries, with the
+distance travelled and the time taken.
+
+```{r makedata}
+deliveries <- data.frame(
+  distance_km = c(1, 2, 2.8, 3, 3.2, 4, 5, 5, 5, 5, 6, 7, 7.7, 8, 8.3, 9,
+                  10, 10, 10, 10, 11, 11.8, 12, 12.3, 13, 14, 15, 15, 15,
+                  15, 16, 17, 17.8, 18, 18.3, 19, 20),
+  time_min    = c(15, 13, 19, 18, 14, 16, 17, 19, 20, 22, 23, 20, 27, 27,
+                  21, 22, 24, 26, 29, 32, 27, 33, 26, 27, 34, 34, 32, 34,
+                  36, 37, 35, 40, 41, 37, 37, 42, 41))
+```
+
+The courier promises delivery **within 30 minutes**. Nothing about the data
+changes; we simply ask a different question of it.
+
+```{r mutate_deliveries}
+deliveries <- deliveries %>%
+  mutate(late = as.integer(time_min > 30))
+
+table(deliveries$late)
+```
+
+```{r}
+plot(time_min ~ distance_km, data = deliveries, las = 1,
+     pch = 16, col = ifelse(deliveries$late == 1, "firebrick", "steelblue"),
+     xlab = "Distance (km)", ylab = "Time (min)")
+
+abline(h = 30, col = "grey40", lwd = 2)
+text(2, 31.5, "promise: 30 min", col = "grey40", cex = 0.8, adj = 0)
+```
+
+The outcome we now want to predict is the colour of the point, not its height.
+
+```{r}
+plot(jitter(late, amount = 0.02) ~ distance_km, data = deliveries, las = 1,
+     pch = 16, col = ifelse(deliveries$late == 1, "firebrick", "steelblue"),
+     ylim = c(-0.05, 1.05), yaxt = "n",
+     xlab = "Distance (km)", ylab = "Late?")
+axis(2, at = c(0, 1), labels = c("0 (on time)", "1 (late)"), las = 1)
+```
+
+(The vertical wobble is `jitter()`, added only so that deliveries at the same
+distance do not sit exactly on top of each other.)
+
+### Exercise 1
+
+  - How many deliveries were late, and what proportion is that?
+
+  - Looking at the second plot: below roughly what distance is lateness rare?
+    Above roughly what distance is it the norm? Is there a region where both
+    happen?
+
+  - Store the proportion of late deliveries as a numeric variable
+    `prop_late`.
+
+**Hint:** `mean(deliveries$late)` gives the proportion directly. Why does
+taking a mean of zeros and ones give you a proportion?
+
+```{r prop_late}
+# Write your code in this code block
+
+```
+
+Answer:
+
+## Why not just fit a straight line?
+
+Nothing stops you running `lm()` on a 0/1 outcome. Let us see what happens.
+
+```{r}
+bad_fit <- lm(late ~ distance_km, data = deliveries)
+
+coef(bad_fit)
+```
+
+```{r}
+predict(bad_fit, newdata = data.frame(distance_km = c(1, 20)))
+```
+
+```{r}
+plot(jitter(late, amount = 0.02) ~ distance_km, data = deliveries, las = 1,
+     pch = 16, col = "firebrick", ylim = c(-0.4, 1.4),
+     xlab = "Distance (km)", ylab = "Late?")
+
+abline(h = c(0, 1), col = "grey70")
+abline(bad_fit, col = "steelblue", lwd = 2)
+```
+
+### Exercise 2
+
+The straight line predicts $-0.30$ for a 1 km delivery and $1.13$ for a 20 km
+one.
+
+  - What would a probability of $-0.30$ mean?
+
+  - Describe, in words, the shape a sensible curve would need instead. What
+    should it do for very short distances, for very long ones, and in between?
+
+Answer:
+
+---
+
+# Part II: the logistic model
+
+## Fitting with `glm()`
+
+Logistic regression puts the straight line on the **log-odds** scale,
+
+$$\log\frac{p}{1-p}=b_0+b_1X,$$
+
+which is equivalent to the S-shaped curve
+
+$$\hat{p}=\frac{1}{1+e^{-(b_0+b_1X)}}.$$
+
+The function is `glm()` — *generalised* linear model — and the argument that
+selects logistic regression is `family = binomial`.
+
+```{r logitfit}
+logit_fit <- glm(late ~ distance_km, data = deliveries, family = binomial)
+
+coef(logit_fit)
+```
+
+Those coefficients live on the log-odds scale, so they are not directly
+readable as minutes or probabilities. The easiest way to see what they say is
+to draw the curve.
+
+```{r}
+grid <- data.frame(distance_km = seq(0, 21, length.out = 200))
+grid$p <- predict(logit_fit, newdata = grid, type = "response")
+
+plot(jitter(late, amount = 0.02) ~ distance_km, data = deliveries, las = 1,
+     pch = 16, col = ifelse(deliveries$late == 1, "firebrick", "steelblue"),
+     ylim = c(-0.05, 1.05),
+     xlab = "Distance (km)", ylab = "P(late)")
+
+lines(grid$distance_km, grid$p, col = "steelblue", lwd = 2)
+abline(h = 0.5, lty = 2, col = "grey50")
+```
+
+Note the argument `type = "response"`. Without it, `predict()` returns
+**log-odds**; with it, you get probabilities. This trips up almost everyone at
+least once.
+
+```{r}
+predict(logit_fit, newdata = data.frame(distance_km = 12))                    # log-odds
+predict(logit_fit, newdata = data.frame(distance_km = 12), type = "response") # probability
+```
+
+### Exercise 3
+
+Predict the probability of being late for deliveries of 10, 12 and 14 km, in
+two ways:
+
+  - by arithmetic: compute $b_0+b_1X$ with `coef()`, then convert with
+    $1/(1+e^{-z})$;
+
+  - with `predict(..., type = "response")`.
+
+  - Store the three probabilities from `predict()` as a numeric variable
+    `pred_late`.
+
+```{r pred_late}
+# Write your code in this code block
+
+```
+
+Do they agree?
+
+## Reading the slope: odds ratios
+
+A coefficient on the log-odds scale becomes interpretable once you undo the
+logarithm.
+
+```{r}
+exp(coef(logit_fit))
+```
+
+```{r}
+exp(2 * coef(logit_fit)[2])   # two extra kilometres
+```
+
+### Exercise 4
+
+  - Write down, in one sentence, what `exp(coef(logit_fit))[2]` means for a
+    courier.
+
+  - Why is it wrong to say "each extra kilometre adds about 3 percentage points
+    to the probability of being late"? Use your three predictions from Exercise
+    3 to show that the effect on the *probability* is not constant.
+
+Answer:
+
+### Exercise 5 (challenge)
+
+The distance at which the model gives a 50--50 chance is $-b_0/b_1$.
+
+  - Compute it, and store it as a numeric variable `d50`.
+
+  - Last week's linear model for the same deliveries was
+    $\widehat{\text{Time}} = 12 + 1.5\times\text{Distance}$. At what distance
+    does *that* model predict exactly 30 minutes — the promised time?
+
+  - Compare the two numbers. Should they be related?
+
+```{r dist_5050}
+# Write your code in this code block
+
+```
+
+Answer:
+
+---
+
+# Part III: fitting by maximum likelihood
+
+Least squares does not work here: with a 0/1 outcome the residuals carry almost
+no information about *how* wrong a prediction was. Logistic regression is fitted
+instead by **maximum likelihood**: we choose the curve that makes the pattern of
+lates and on-times we actually observed as probable as possible.
+
+For a candidate pair $(b_0, b_1)$, each delivery contributes the probability
+that curve assigned to what actually happened: $\hat{p}_i$ if it was late,
+$1-\hat{p}_i$ if not. Multiplying those together gives the **likelihood**; in
+practice we add their logarithms instead.
+
+```{r loglik}
+loglik <- function(b0, b1, data = deliveries){
+  z <- b0 + b1 * data$distance_km
+  p <- 1 / (1 + exp(-z))
+  # each delivery contributes log(p) if it was late, log(1 - p) if not
+  return(sum(ifelse(data$late == 1, log(p), log(1 - p))))
+}
+```
+
+```{r}
+loglik(-13.2, 1.1)   # close to the fitted curve
+loglik(-4.0, 0.35)   # a much flatter curve
+loglik(0, 0)         # a curve that says 50-50 for every delivery
+```
+
+Higher is better: the fitted curve makes what we saw far more probable than
+either alternative. R reports the same quantity for the fitted model:
+
+```{r}
+loglik(logit_fit)
+```
+
+### Exercise 6
+
+Try to beat `glm()`.
+
+  - Evaluate `loglik()` at the fitted coefficients themselves.
+
+  - Then try a few nearby pairs — nudge the slope up and down, nudge the
+    intercept up and down.
+
+Can you find any pair with a **higher** log-likelihood than the one `glm()`
+found?
+
+```{r}
+# Write your code in this code block
+
+```
+
+Answer:
+
+### Exercise 7 (challenge)
+
+Do the search properly, exactly as you did with the sum of squared residuals
+last week. Fix the intercept at $-13.2$ and evaluate the log-likelihood over a
+grid of slopes:
+
+```{r}
+slopes <- seq(from = 0.3, to = 2.5, by = 0.01)
+```
+
+  - store the log-likelihoods in a data frame called `ll_df`, with two
+    columns: 'slopes' (containing the slope values) and 'loglik';
+
+  - plot it against `slopes`;
+
+  - use `which.max()` to find the best slope on the grid, and compare it with
+    `coef(logit_fit)[2]`.
+
+How does this curve differ from the sum-of-squares curve you plotted last week?
+(Think about which one you want to be at the top of, and which at the bottom.)
+
+```{r ll_vals}
+# Write your code in this code block
+
+```
+
+Answer:
+
+---
+
+# Part IV: from a probability to a decision
+
+The model returns numbers like 0.11 and 0.78, but a dispatcher has to decide
+whether to warn the customer. That needs a **threshold**.
+
+```{r predlate}
+p_hat <- predict(logit_fit, type = "response")
+
+predicted_late <- as.integer(p_hat > 0.5)
+
+table(predicted = predicted_late, actual = deliveries$late)
+```
+
+Read the table carefully: the diagonal holds the correct decisions, the
+off-diagonal the two kinds of mistake — **false alarms** (warned, arrived on
+time) and **misses** (not warned, arrived late).
+
+```{r}
+mean(predicted_late == deliveries$late)   # accuracy
+```
+
+Accuracy on its own means little. The lazy competitor ignores distance entirely
+and always predicts "on time":
+
+```{r}
+mean(deliveries$late == 0)                # accuracy of always saying "on time"
+```
+
+### Exercise 8
+
+From the confusion matrix above, compute
+
+  - the **sensitivity**: of the deliveries that really were late, what
+    proportion did we flag?
+
+  - the **specificity**: of those that were on time, what proportion did we
+    correctly leave alone?
+
+  - Store both as a named numeric vector `sens_spec`, e.g.
+    `c(sensitivity = ..., specificity = ...)`.
+
+```{r sens_spec}
+# Write your code in this code block
+
+```
+
+Answer:
+
+### Exercise 9
+
+Now move the threshold. Build the confusion matrix for cut-offs of 0.3 and 0.7
+as well as 0.5.
+
+  - What happens to the number of misses as the threshold falls?
+
+  - What happens to the number of false alarms?
+
+  - Which threshold would you recommend to the courier company, and what extra
+    information would you need to decide properly?
+
+**Hint:** a small function taking the threshold as its argument will save you
+from copying code three times.
+
+```{r}
+# Write your code in this code block
+
+```
+
+Answer:
+
+---
+
+# Part V: a larger dataset
+
+Thirty-seven deliveries are enough to see the machinery work, but not enough to
+say much about how it generalises. We return to `penguins`, and ask a question
+with a yes/no answer: can we tell a penguin's **sex** from its **body mass**?
+
+```{r pengclean}
+penguins_clean <- penguins %>%
+  filter(!is.na(body_mass_g), !is.na(flipper_length_mm),
+         !is.na(bill_depth_mm), !is.na(sex))
+
+table(penguins_clean$sex)
+```
+
+Before fitting anything, look at the data --- just as we did with the
+deliveries at the start of the lab.
+
+### Exercise 10
+
+Plot `body_mass_g` (y-axis) against `flipper_length_mm` (x-axis), with each
+point **coloured by `sex`**. This is the penguin version of the very first
+delivery plot in Part I.
+
+**Hints.**
+
+  - **Start from the delivery plot.** Scroll back to *The same deliveries, a
+    different question* in Part I and look at the code of the first plot (time
+    against distance, coloured by late or on time). Before you copy it, think
+    about what has to change for the penguins:
+
+      - which data frame is used (`data = ...`)?
+
+      - which variable goes on which axis (the formula `y ~ x`)?
+
+      - what decides the colour of a point? In the delivery plot it was
+        `deliveries$late == 1`; here it is the penguin's sex.
+
+      - what should the axis labels say?
+
+      - the delivery plot also drew a horizontal line at 30 minutes. Does an
+        equivalent line make sense for the penguins?
+
+  - **Colour by sex.** The colour test becomes
+    `ifelse(penguins_clean$sex == "male", "firebrick", "steelblue")`.
+
+  - **Add a legend**, so that a reader knows which colour is which:
+    `legend("topleft", bty = "n", pch = 16, legend = c("female", "male"), col = c("steelblue", "firebrick"))`.
+
+```{r penguins_scatter}
+# Write your code in this code block
+
+```
+
+**Optional challenge: the same plot with ggplot2.** If you have met
+**ggplot2** before, draw the same plot with it instead (or as well). Load the
+package with `library(ggplot2)`; if R says there is no package called
+'ggplot2', run `install.packages("ggplot2")` once first. Then fill in the
+blanks:
+
+`ggplot(penguins_clean, aes(x = ___, y = ___, colour = ___)) + geom_point()`
+
+Putting `colour = sex` *inside* `aes()` makes ggplot choose the colours and
+draw the legend for you. Add axis labels with
+`+ labs(x = "Flipper length (mm)", y = "Body mass (g)")`.
+
+```{r}
+# Optional challenge: write your ggplot2 code in this code block
+
+```
+
+The next two plots are drawn for you. The first is the penguin version of the
+second delivery plot: sex coded 0 = female, 1 = male, against body mass, with a
+small vertical wobble (`jitter()`) so that penguins of the same mass do not
+hide each other. The second draws the same plot again, with one panel per
+species, all on the same horizontal axis.
+
+```{r}
+penguins_plot <- penguins_clean %>%
+  mutate(male = as.integer(sex == "male"))
+
+par(mar = c(5, 7, 2, 1))   # a wider left margin, for the 0/1 labels
+
+plot(jitter(male, amount = 0.05) ~ body_mass_g, data = penguins_plot, las = 1,
+     pch = 16, col = ifelse(penguins_plot$sex == "male", "firebrick", "steelblue"),
+     ylim = c(-0.1, 1.1), yaxt = "n",
+     xlab = "Body mass (g)", ylab = "")
+axis(2, at = c(0, 1), labels = c("0 (female)", "1 (male)"), las = 1)
+
+par(mar = c(5, 4, 4, 2) + 0.1)   # back to R's default margins
+```
+
+```{r fig.width = 9, fig.height = 3.6}
+par(mfrow = c(1, 3))   # 1 row, 3 panels
+
+for (sp in levels(penguins_plot$species)) {
+  d <- penguins_plot %>% filter(species == sp)
+  plot(jitter(male, amount = 0.05) ~ body_mass_g, data = d, las = 1,
+       pch = 16, col = ifelse(d$sex == "male", "firebrick", "steelblue"),
+       xlim = range(penguins_plot$body_mass_g), ylim = c(-0.1, 1.1),
+       yaxt = "n", main = sp, xlab = "Body mass (g)", ylab = "")
+  axis(2, at = c(0, 1), labels = c("F", "M"), las = 1)
+}
+
+par(mfrow = c(1, 1))   # back to one plot per figure
+```
+
+Look at all three plots and answer:
+
+  - In your plot, is there a line that separates females from males, like the
+    30-minute line for the deliveries? Why should we not expect one?
+
+  - In the second plot, is the switch from 0 to 1 as clean as the switch from
+    on time to late was for the deliveries?
+
+  - What changes when the species are separated in the third plot? What do
+    you expect from a model that uses body mass alone?
+
+Answer:
+
+```{r sexfit}
+sex_fit <- glm(sex ~ body_mass_g, data = penguins_clean, family = binomial)
+
+coef(sex_fit)
+```
+
+One detail matters enormously here. The outcome is a **factor**, and `glm()`
+models the probability of its **second** level:
+
+```{r}
+levels(penguins_clean$sex)
+```
+
+So `sex_fit` predicts $P(\text{male})$, not $P(\text{female})$. Getting this
+backwards is one of the most common errors in practice — always check
+`levels()`.
+
+```{r}
+exp(100 * coef(sex_fit)[2])   # odds ratio for 100 g, a more natural step than 1 g
+```
+
+### Exercise 11
+
+  - Compute the predicted probabilities, classify at 0.5, and build the
+    confusion matrix against `penguins_clean$sex`.
+
+  - What is the accuracy? What is the accuracy of always guessing the commoner
+    sex?
+
+  - Store the accuracy of `sex_fit` as a numeric variable `acc_sex`.
+
+  - Is body mass alone a useful predictor here?
+
+**Hint:** compare `as.integer(p > 0.5)` with
+`as.integer(penguins_clean$sex == "male")`.
+
+```{r acc_sex}
+# Write your code in this code block
+
+```
+
+Answer:
+
+---
+
+# Part VI: more than one predictor
+
+Body mass on its own is disappointing. But penguins of three different species
+are mixed together in that model, and the species differ enormously in size — a
+small Gentoo is a large Adelie.
+
+```{r sexfit2}
+sex_fit2 <- glm(sex ~ body_mass_g + species,
+                data = penguins_clean, family = binomial)
+
+round(coef(sex_fit2), 4)
+```
+
+```{r}
+exp(100 * coef(sex_fit2)[2])
+```
+
+### Exercise 12
+
+  - Compare the odds ratio for 100 g in `sex_fit` and in `sex_fit2`. Why does
+    holding species constant change it so much?
+
+  - Compute the accuracy of `sex_fit2`, store it as a numeric variable
+    `acc_sex2`, and compare it with `sex_fit`.
+
+  - Interpret `speciesGentoo` in one sentence. Which species is the reference?
+
+```{r acc_sex2}
+# Write your code in this code block
+
+```
+
+Answer:
+
+### Exercise 13 (challenge)
+
+Accuracy computed on the data used for fitting is optimistic. Split the
+penguins into a training set and a test set, exactly as you did last week:
+
+```{r traintest}
+set.seed(2024)
+n        <- nrow(penguins_clean)
+train_id <- sample(seq_len(n), size = round(0.7 * n))
+train    <- penguins_clean[train_id, ]
+test     <- penguins_clean[-train_id, ]
+```
+
+  - fit `sex ~ body_mass_g + species` on the training set only;
+
+  - classify the test set at a threshold of 0.5;
+
+  - report the accuracy on both sets.
+
+Then repeat with a much more flexible model — add `bill_depth_mm`,
+`flipper_length_mm` and their interactions with species, e.g.
+
+```{r eval=FALSE}
+sex ~ (body_mass_g + bill_depth_mm + flipper_length_mm) * species
+```
+
+Does the extra flexibility help on the test set?
+
+Store the four accuracies in a data frame called `acc_df`, with columns
+'Model' (`"simple"` or `"flexible"`), 'Train.accuracy' and 'Test.accuracy'.
+
+```{r acc_df}
+# Write your code in this code block
+
+```
+
+Answer:
+
+---
+
+# Part VII: more than two categories
+
+Not every categorical outcome has two levels. `species` has three, and nothing
+about the logic changes: we choose a **reference category** and fit one equation
+for each of the others. The function is `multinom()`, from the `nnet` package.
+
+```{r spfit, results='hide'}
+sp_fit <- multinom(species ~ flipper_length_mm, data = penguins_clean)
+```
+
+```{r}
+round(coef(sp_fit), 3)
+```
+
+Each row is one equation, comparing that species with the reference — the first
+level of the factor. The fitted probabilities always add to one across the three
+species:
+
+```{r}
+head(round(predict(sp_fit, type = "probs"), 3))
+```
+
+```{r}
+grid2 <- data.frame(flipper_length_mm = seq(170, 235, length.out = 200))
+probs <- predict(sp_fit, newdata = grid2, type = "probs")
+
+matplot(grid2$flipper_length_mm, probs, type = "l", lty = 1, lwd = 2,
+        col = c("steelblue", "orange3", "firebrick"), las = 1,
+        xlab = "Flipper length (mm)", ylab = "Predicted probability")
+
+legend("left", bty = "n", legend = colnames(probs),
+       col = c("steelblue", "orange3", "firebrick"), lwd = 2)
+```
+
+### Exercise 14
+
+  - Which species is the reference category?
+
+  - Classify every penguin with `predict(sp_fit)` and compute the accuracy.
+    Compare it with always guessing the commonest species.
+
+  - Store the accuracy as a numeric variable `acc_species`.
+
+  - Look at the three curves. Flipper length separates one species clearly from
+    the other two, but struggles to tell those two apart. Which pair, and does
+    the coefficient table say the same thing?
+
+```{r acc_species}
+# Write your code in this code block
+
+```
+
+Answer:
+
+---
+
+# Part VIII: how logistic models fail
+
+## Separation
+
+Logistic regression has a failure mode with no counterpart in linear
+regression. If a predictor splits the two classes perfectly, there is no best
+curve: a steeper one always fits better, and the fitting algorithm runs away.
+
+This is a small-sample problem, and it is easy to trigger. Take just 16
+penguins of two species:
+
+```{r small}
+two_species <- penguins_clean %>%
+  filter(species %in% c("Adelie", "Gentoo")) %>%
+  mutate(is_gentoo = as.integer(species == "Gentoo"))
+
+set.seed(1)
+small <- two_species[sample(nrow(two_species), 16), ]
+
+# in this sample, the flipper lengths of the two species do not overlap at all
+range(small$flipper_length_mm[small$is_gentoo == 0])
+range(small$flipper_length_mm[small$is_gentoo == 1])
+```
+
+### Exercise 15
+
+Fit `is_gentoo ~ flipper_length_mm` on `small`, with `family = binomial`.
+
+  - Read the warnings R produces. What do they say?
+
+  - Look at `summary()`. What is the estimated coefficient, and what is its
+    standard error?
+
+  - Store the estimated coefficient of `flipper_length_mm` as a numeric
+    variable `small_slope`.
+
+  - Now fit the same model on the full `two_species` dataset. Do the symptoms
+    disappear? Why?
+
+```{r small_slope}
+# Write your code in this code block
+
+```
+
+Answer:
+
+## Extrapolation
+
+```{r}
+range(penguins_clean$body_mass_g)
+```
+
+```{r}
+predict(sex_fit,
+        newdata = data.frame(body_mass_g = c(4000, 7000, 12000)),
+        type = "response")
+```
+
+### Exercise 16
+
+The logistic curve is trapped between 0 and 1, so unlike last week's straight
+line it can never return an absurd number.
+
+Does that make extrapolation safe? Write two sentences explaining why a
+prediction of 0.999 for a 12 kg penguin is not evidence about 12 kg penguins.
+
+Answer:
+
+## The fitted curve is an estimate too
+
+```{r}
+set.seed(2024)
+
+slopes <- map_dbl(1:300, \(i){
+  s <- penguins_clean %>% slice_sample(n = 100)
+  coef(glm(sex ~ body_mass_g, data = s, family = binomial))[2]
+})
+
+hist(slopes, breaks = 25, col = "lightblue", las = 1,
+     main = "Sampling distribution of the slope (n = 100)",
+     xlab = "Estimated coefficient of body mass (log-odds per g)")
+
+sd(slopes)
+```
+
+### Exercise 17 (challenge)
+
+  - Compare `sd(slopes)` with the standard error that `summary(sex_fit)`
+    reports for `body_mass_g`. Why are they not the same?
+
+  - Repeat the simulation with samples of size 30. What happens to the spread,
+    and what happens to the number of samples in which the algorithm struggles?
+
+  - Finally, fit `sex ~ body_mass_g` **separately within each species** and
+    compare the three odds ratios with the pooled one from `sex_fit`. What does
+    that tell you about the pooled estimate?
+
+  - Store the three within-species odds ratios (per 100 g) as a numeric
+    vector `species_or`.
+
+```{r species_or}
+# Write your code in this code block
+
+```
+
+Answer:
+
+---
+
+## Where this goes next
+
+Both of the last two labs fitted a model, interpreted its coefficients,
+measured its error against a baseline, and checked it on data it had not seen.
+That sequence is not specific to lines or S-curves: it is what fitting any
+predictive model looks like. What changes from one model to the next is the
+shape of the curve and the criterion used to choose it — least squares here,
+maximum likelihood there — and the vocabulary you now have for both.
